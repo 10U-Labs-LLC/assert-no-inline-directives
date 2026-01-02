@@ -36,7 +36,7 @@ inputs:
 name: Assert No Inline Lint Disables
 runs:
   steps:
-    - run: pip install assert-no-inline-lint-disables
+    - run: python3 -m pip install assert-no-inline-lint-disables
       shell: bash
     - run: |
         ARGS="--linters ${{ inputs.linters }}"
