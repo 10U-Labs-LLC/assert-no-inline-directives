@@ -1,13 +1,12 @@
 """Shared test utilities."""
 
 import subprocess
-import sys
 
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run the assert-no-inline-lint-disables CLI with the given arguments."""
+    """Run the assert-no-inline-lint-disables CLI as a user would."""
     return subprocess.run(
-        [sys.executable, "-m", "assert_no_inline_lint_disables", *args],
+        ["assert-no-inline-lint-disables", *args],
         capture_output=True,
         text=True,
         check=False,
