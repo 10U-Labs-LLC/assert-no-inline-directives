@@ -140,12 +140,14 @@ class TestFlags:
 class TestDirectoryAndExtensionHandling:
     """Tests for directory and extension handling."""
 
-    def test_skips_directories(self, tmp_path: Path) -> None:
-        """Directories are skipped silently."""
+    def test_scans_directories_recursively(self, tmp_path: Path) -> None:
+        """Directories are scanned recursively."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
+        py_file = subdir / "test.py"
+        py_file.write_text("# pylint: disable=foo\n")
         exit_code = run_main_with_args(["--linters", "pylint", str(subdir)])
-        assert exit_code == 0
+        assert exit_code == 1  # Finding detected in nested file
 
     def test_skips_irrelevant_extensions(self, tmp_path: Path) -> None:
         """Irrelevant extensions are skipped."""
@@ -184,30 +186,30 @@ class TestVerboseFlag:
         captured = capsys.readouterr()
         assert f"Scanning: {test_file}" in captured.out
 
-    def test_verbose_shows_skipped_directory(
+    def test_verbose_silently_skips_directory(
         self, tmp_path: Path, capsys: Any
     ) -> None:
-        """Verbose shows skipped directories."""
+        """Verbose does not show skipped directories (scans recursively instead)."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
         run_main_with_args(["--linters", "pylint", "--verbose", str(subdir)])
         captured = capsys.readouterr()
-        assert f"Skipping (directory): {subdir}" in captured.out
+        assert "Skipping" not in captured.out
 
-    def test_verbose_shows_skipped_extension(
+    def test_verbose_silently_skips_extension(
         self, tmp_path: Path, capsys: Any
     ) -> None:
-        """Verbose shows skipped extensions."""
+        """Verbose silently skips irrelevant extensions."""
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("content\n")
         run_main_with_args(["--linters", "pylint", "--verbose", str(txt_file)])
         captured = capsys.readouterr()
-        assert f"Skipping (extension): {txt_file}" in captured.out
+        assert "Skipping" not in captured.out
 
-    def test_verbose_shows_skipped_excluded(
+    def test_verbose_silently_skips_excluded(
         self, tmp_path: Path, capsys: Any
     ) -> None:
-        """Verbose shows skipped excluded files."""
+        """Verbose silently skips excluded files."""
         test_file = tmp_path / "generated.py"
         test_file.write_text("x = 1\n")
         run_main_with_args([
@@ -217,7 +219,7 @@ class TestVerboseFlag:
             str(test_file),
         ])
         captured = capsys.readouterr()
-        assert f"Skipping (excluded): {test_file}" in captured.out
+        assert "Skipping" not in captured.out
 
     def test_verbose_shows_findings(self, tmp_path: Path, capsys: Any) -> None:
         """Verbose shows findings inline."""
@@ -271,3 +273,46 @@ class TestVerboseFlag:
         captured = capsys.readouterr()
         assert "pylint: disable" in captured.out
         assert "found 1 finding" in captured.out
+
+
+@pytest.mark.unit
+class TestErrorHandling:
+    """Tests for error handling paths."""
+
+    def test_unreadable_file_exits_2(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Unreadable file causes exit code 2."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("x = 1\n")
+        test_file.chmod(0o000)
+        try:
+            exit_code = run_main_with_args([
+                "--linters", "pylint", str(test_file)
+            ])
+            assert exit_code == 2
+            captured = capsys.readouterr()
+            assert "Error reading" in captured.err
+        finally:
+            test_file.chmod(0o644)
+
+    def test_unreadable_file_continues_scanning(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Unreadable file doesn't stop scanning other files."""
+        unreadable = tmp_path / "unreadable.py"
+        unreadable.write_text("x = 1\n")
+        unreadable.chmod(0o000)
+        readable = tmp_path / "readable.py"
+        readable.write_text("# pylint: disable=foo\n")
+        try:
+            exit_code = run_main_with_args([
+                "--linters", "pylint", str(unreadable), str(readable)
+            ])
+            # Exit 1 because we found a violation (takes precedence over error)
+            assert exit_code == 1
+            captured = capsys.readouterr()
+            assert "Error reading" in captured.err
+            assert "pylint: disable" in captured.out
+        finally:
+            unreadable.chmod(0o644)

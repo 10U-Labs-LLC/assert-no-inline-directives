@@ -99,20 +99,38 @@ def _output_findings(findings: list[Finding], use_count: bool) -> None:
             print(finding)
 
 
-def _check_skip_reason(
+def _should_skip_file(
     path: str,
     relevant_extensions: frozenset[str],
     exclude_patterns: list[str],
-) -> str | None:
-    """Check if a file should be skipped and return the reason, or None."""
-    if os.path.isdir(path):
-        return "directory"
+) -> bool:
+    """Check if a file should be skipped (not a matching file or excluded)."""
     _, ext = os.path.splitext(path)
     if ext.lower() not in relevant_extensions:
-        return "extension"
+        return True
     if any(fnmatch.fnmatch(path, pattern) for pattern in exclude_patterns):
-        return "excluded"
-    return None
+        return True
+    return False
+
+
+def _iter_files(paths: list[str]) -> tuple[list[str], list[str]]:
+    """Expand paths to a list of files, recursively walking directories.
+
+    Returns:
+        Tuple of (files, missing_paths) where missing_paths are paths that don't exist.
+    """
+    result: list[str] = []
+    missing: list[str] = []
+    for path in paths:
+        if os.path.isdir(path):
+            for root, _, files in os.walk(path):
+                for filename in files:
+                    result.append(os.path.join(root, filename))
+        elif os.path.isfile(path):
+            result.append(path)
+        else:
+            missing.append(path)
+    return result, missing
 
 
 @dataclass
@@ -151,11 +169,16 @@ def _process_files(
     result = _ScanResult()
     relevant_extensions = get_relevant_extensions(linters)
 
-    for path in args.files:
-        skip_reason = _check_skip_reason(path, relevant_extensions, exclude_patterns)
-        if skip_reason:
-            if args.verbose:
-                print(f"Skipping ({skip_reason}): {path}")
+    # Expand directories to files
+    all_files, missing_paths = _iter_files(args.files)
+
+    # Report missing paths as errors
+    for path in missing_paths:
+        print(f"Error: {path}: No such file or directory", file=sys.stderr)
+        result.had_error = True
+
+    for path in all_files:
+        if _should_skip_file(path, relevant_extensions, exclude_patterns):
             continue
 
         if args.verbose:
