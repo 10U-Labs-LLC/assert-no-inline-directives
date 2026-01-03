@@ -434,29 +434,29 @@ class TestGetRelevantExtensions:
     """Tests for get_relevant_extensions function."""
 
     def test_pylint_extensions(self) -> None:
-        """Pylint returns .py extension."""
+        """Pylint returns .py and .toml extensions."""
         result = get_relevant_extensions(frozenset({"pylint"}))
-        assert result == frozenset({".py"})
+        assert result == frozenset({".py", ".toml"})
 
     def test_mypy_extensions(self) -> None:
-        """Mypy returns .py extension."""
+        """Mypy returns .py and .toml extensions."""
         result = get_relevant_extensions(frozenset({"mypy"}))
-        assert result == frozenset({".py"})
+        assert result == frozenset({".py", ".toml"})
 
     def test_yamllint_extensions(self) -> None:
-        """Yamllint returns .yaml and .yml extensions."""
+        """Yamllint returns .yaml, .yml, and .toml extensions."""
         result = get_relevant_extensions(frozenset({"yamllint"}))
-        assert result == frozenset({".yaml", ".yml"})
+        assert result == frozenset({".yaml", ".yml", ".toml"})
 
     def test_combined_python_linters(self) -> None:
-        """Pylint and mypy together return .py extension."""
+        """Pylint and mypy together return .py and .toml extensions."""
         result = get_relevant_extensions(frozenset({"pylint", "mypy"}))
-        assert result == frozenset({".py"})
+        assert result == frozenset({".py", ".toml"})
 
     def test_all_linters(self) -> None:
         """All linters return all extensions."""
         result = get_relevant_extensions(frozenset({"yamllint", "pylint", "mypy"}))
-        assert result == frozenset({".py", ".yaml", ".yml"})
+        assert result == frozenset({".py", ".yaml", ".yml", ".toml"})
 
     def test_empty_linters(self) -> None:
         """Empty linters set returns empty extensions."""

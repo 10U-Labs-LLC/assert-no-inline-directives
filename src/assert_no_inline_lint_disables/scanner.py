@@ -7,10 +7,11 @@ from dataclasses import dataclass
 VALID_LINTERS = frozenset({"yamllint", "pylint", "mypy"})
 
 # File extensions relevant to each linter
+# .toml included for all linters to catch directives in pyproject.toml comments
 LINTER_EXTENSIONS: dict[str, frozenset[str]] = {
-    "yamllint": frozenset({".yaml", ".yml"}),
-    "pylint": frozenset({".py"}),
-    "mypy": frozenset({".py"}),
+    "yamllint": frozenset({".yaml", ".yml", ".toml"}),
+    "pylint": frozenset({".py", ".toml"}),
+    "mypy": frozenset({".py", ".toml"}),
 }
 
 

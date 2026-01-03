@@ -18,8 +18,8 @@ assert-no-inline-lint-disables --linters LINTERS [OPTIONS] PATH [PATH ...]
 ### Required Arguments
 
 - `--linters LINTERS` - Comma-separated list of linters: `yamllint,pylint,mypy`
-- `PATH` - One or more file or directory paths to scan (directories are scanned
-  recursively)
+- `PATH` - One or more file paths, directory paths, or glob patterns to scan
+  (directories are scanned recursively, globs support hidden directories)
 
 ### Optional Arguments
 
@@ -39,6 +39,9 @@ assert-no-inline-lint-disables --linters pylint,mypy src/*.py
 
 # Scan a directory recursively
 assert-no-inline-lint-disables --linters pylint,mypy src/
+
+# Use glob patterns (including hidden directories like .github)
+assert-no-inline-lint-disables --linters yamllint "**/*.yml" "**/*.yaml"
 
 # Check all linters, exclude vendor files
 assert-no-inline-lint-disables --linters yamllint,pylint,mypy \
@@ -106,9 +109,11 @@ config.yaml:5:yamllint:yamllint disable
 - Tolerates extra whitespace (e.g., `pylint:  disable`, `type:   ignore`)
 - Only detects directives in comments (after `#`), not in string literals
 - Does **not** flag "enable" directives (e.g., `yamllint enable`)
+- Files are scanned in alphabetical order for consistent output
+- Glob patterns support hidden directories (e.g., `.github`)
 - Linters only check files with matching extensions:
-  - `yamllint`: `.yaml`, `.yml`
-  - `pylint`, `mypy`: `.py`
+  - `yamllint`: `.yaml`, `.yml`, `.toml`
+  - `pylint`, `mypy`: `.py`, `.toml`
 
 ## License
 

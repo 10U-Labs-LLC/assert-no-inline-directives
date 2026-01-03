@@ -25,7 +25,7 @@ jobs:
         name: assert-no-inline-lint-disables
         uses: 10U-Labs-LLC/assert-no-inline-lint-disables@latest
         with:
-          files: "**/*.py **/*.yml"
+          files: "**/*.py **/*.yml **/*.toml"
           linters: mypy,pylint,yamllint
           verbose: true
       - name: Set up Node

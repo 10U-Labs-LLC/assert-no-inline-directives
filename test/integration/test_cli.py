@@ -2,21 +2,10 @@
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
-from assert_no_inline_lint_disables.cli import main
-
-
-def run_main_with_args(args: list[str]) -> int:
-    """Run main() with the given arguments and return the exit code."""
-    with patch("sys.argv", ["assert-no-inline-lint-disables", *args]):
-        try:
-            main()
-            return 0
-        except SystemExit as e:
-            return int(e.code) if e.code is not None else 0
+from ..conftest import run_main_with_args
 
 
 @pytest.mark.integration
@@ -621,3 +610,70 @@ class TestCliDirectoryHandling:
             assert "type: ignore" in captured.out
         finally:
             unreadable.chmod(0o644)
+
+
+@pytest.mark.integration
+class TestCliGlobPatterns:
+    """Integration tests for glob pattern expansion.
+
+    Unit tests cover all glob pattern types exhaustively with mocking.
+    These integration tests verify the full pipeline works with real files.
+    """
+
+    def test_glob_expands_and_scans_multiple_files(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Glob pattern expands to multiple files and scans all of them."""
+        (tmp_path / "alpha.py").write_text("a = 1  # type: ignore\n")
+        (tmp_path / "beta.py").write_text("b = 2  # type: ignore\n")
+        (tmp_path / "gamma.py").write_text("clean code\n")
+        exit_code = run_main_with_args([
+            "--linters", "mypy", str(tmp_path / "*.py")
+        ])
+        assert exit_code == 1
+        output = capsys.readouterr().out
+        # Verify multiple files were scanned and findings reported
+        assert "alpha.py" in output
+        assert "beta.py" in output
+        assert "gamma.py" not in output  # No finding in clean file
+
+    def test_glob_matching_directory_expands_contents(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Glob matching a directory name expands to scan files inside."""
+        subdir = tmp_path / "src"
+        subdir.mkdir()
+        (subdir / "module.py").write_text("# pylint: disable=all\n")
+        # Glob matches directory name, should expand and scan contents
+        exit_code = run_main_with_args([
+            "--linters", "pylint", str(tmp_path / "s*")
+        ])
+        assert exit_code == 1
+        assert "module.py" in capsys.readouterr().out
+
+    def test_recursive_glob_finds_deeply_nested_files(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Recursive ** glob finds files in nested directories."""
+        nested = tmp_path / "src" / "pkg" / "subpkg"
+        nested.mkdir(parents=True)
+        (nested / "module.py").write_text("# pylint: disable=all\n")
+        (tmp_path / "root.py").write_text("# pylint: disable=all\n")
+        exit_code = run_main_with_args([
+            "--linters", "pylint", str(tmp_path / "**" / "*.py")
+        ])
+        assert exit_code == 1
+        output = capsys.readouterr().out
+        # Both root and deeply nested files found
+        assert "root.py" in output
+        assert "module.py" in output
+
+    def test_nonexistent_glob_pattern_reports_error(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Glob pattern matching nothing reports error with pattern name."""
+        exit_code = run_main_with_args([
+            "--linters", "mypy", str(tmp_path / "no_match_*.py")
+        ])
+        assert exit_code == 2
+        assert "no_match_*.py" in capsys.readouterr().err
