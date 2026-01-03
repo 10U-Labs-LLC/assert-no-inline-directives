@@ -2,6 +2,7 @@
 
 import argparse
 import fnmatch
+import glob
 import os
 import sys
 from dataclasses import dataclass, field
@@ -114,8 +115,42 @@ def _should_skip_file(
     return False
 
 
+def _is_glob_pattern(path: str) -> bool:
+    """Check if a path contains glob pattern characters."""
+    return any(c in path for c in ("*", "?", "["))
+
+
+def _expand_directory(directory: str) -> list[str]:
+    """Recursively walk a directory and return all file paths."""
+    files: list[str] = []
+    for root, _, filenames in os.walk(directory):
+        for filename in filenames:
+            files.append(os.path.join(root, filename))
+    return files
+
+
+def _expand_glob(pattern: str) -> tuple[list[str], bool]:
+    """Expand a glob pattern to file paths.
+
+    Returns:
+        Tuple of (files, found) where found is True if pattern matched anything.
+    """
+    matched = glob.glob(pattern, recursive=True, include_hidden=True)
+    if not matched:
+        return [], False
+    files: list[str] = []
+    for match in matched:
+        if os.path.isfile(match):
+            files.append(match)
+        elif os.path.isdir(match):
+            files.extend(_expand_directory(match))
+    return files, True
+
+
 def _iter_files(paths: list[str]) -> tuple[list[str], list[str]]:
     """Expand paths to a list of files, recursively walking directories.
+
+    Supports glob patterns (*, **, ?) with hidden directory matching.
 
     Returns:
         Tuple of (files, missing_paths) where missing_paths are paths that don't exist.
@@ -123,10 +158,14 @@ def _iter_files(paths: list[str]) -> tuple[list[str], list[str]]:
     result: list[str] = []
     missing: list[str] = []
     for path in paths:
-        if os.path.isdir(path):
-            for root, _, files in os.walk(path):
-                for filename in files:
-                    result.append(os.path.join(root, filename))
+        if _is_glob_pattern(path):
+            files, found = _expand_glob(path)
+            if found:
+                result.extend(files)
+            else:
+                missing.append(path)
+        elif os.path.isdir(path):
+            result.extend(_expand_directory(path))
         elif os.path.isfile(path):
             result.append(path)
         else:
@@ -176,6 +215,9 @@ def _process_files(
 
     # Expand directories to files
     all_files, missing_paths = _iter_files(args.files)
+
+    # Sort files alphabetically for consistent output
+    all_files.sort()
 
     # Report missing paths as errors
     for path in missing_paths:
