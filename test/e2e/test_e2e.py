@@ -336,6 +336,82 @@ class TestFailFastFlag:
 
 
 @pytest.mark.e2e
+class TestVerboseFlag:
+    """E2E tests for --verbose flag."""
+
+    def test_verbose_shows_linters(self, tmp_path: Path) -> None:
+        """Verbose shows linters being checked."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("x = 1\n")
+        result = run_cli("--linters", "pylint,mypy", "--verbose", str(test_file))
+        assert result.returncode == 0
+        assert "Checking for:" in result.stdout
+        assert "mypy" in result.stdout
+        assert "pylint" in result.stdout
+
+    def test_verbose_shows_scanning(self, tmp_path: Path) -> None:
+        """Verbose shows files being scanned."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("x = 1\n")
+        result = run_cli("--linters", "pylint", "--verbose", str(test_file))
+        assert result.returncode == 0
+        assert "Scanning:" in result.stdout
+
+    def test_verbose_shows_skipping(self, tmp_path: Path) -> None:
+        """Verbose shows files being skipped."""
+        txt_file = tmp_path / "test.txt"
+        txt_file.write_text("x = 1\n")
+        result = run_cli("--linters", "pylint", "--verbose", str(txt_file))
+        assert result.returncode == 0
+        assert "Skipping (extension):" in result.stdout
+
+    def test_verbose_shows_findings(self, tmp_path: Path) -> None:
+        """Verbose shows findings inline."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("# pylint: disable=foo\n")
+        result = run_cli("--linters", "pylint", "--verbose", str(test_file))
+        assert result.returncode == 1
+        assert "pylint: disable" in result.stdout
+
+    def test_verbose_shows_summary(self, tmp_path: Path) -> None:
+        """Verbose shows summary at end."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("# pylint: disable=foo\n")
+        result = run_cli("--linters", "pylint", "--verbose", str(test_file))
+        assert result.returncode == 1
+        assert "Scanned 1 file(s)" in result.stdout
+        assert "found 1 finding(s)" in result.stdout
+
+    def test_verbose_with_fail_fast(self, tmp_path: Path) -> None:
+        """Verbose with fail-fast shows one finding and exits."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("# pylint: disable=a\n# pylint: disable=b\n")
+        result = run_cli(
+            "--linters", "pylint", "--verbose", "--fail-fast", str(test_file)
+        )
+        assert result.returncode == 1
+        assert "found 1 finding" in result.stdout
+
+    def test_verbose_mutually_exclusive_with_quiet(self, tmp_path: Path) -> None:
+        """Verbose and quiet are mutually exclusive."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("x = 1\n")
+        result = run_cli(
+            "--linters", "pylint", "--verbose", "--quiet", str(test_file)
+        )
+        assert result.returncode == 2
+
+    def test_verbose_mutually_exclusive_with_count(self, tmp_path: Path) -> None:
+        """Verbose and count are mutually exclusive."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("x = 1\n")
+        result = run_cli(
+            "--linters", "pylint", "--verbose", "--count", str(test_file)
+        )
+        assert result.returncode == 2
+
+
+@pytest.mark.e2e
 class TestWarnOnlyFlag:
     """E2E tests for --warn-only flag."""
 
