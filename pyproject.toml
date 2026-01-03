@@ -1,6 +1,6 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
 
 [project]
 authors = [{name = "10U Labs", email = "dev@10ulabs.com"}]
@@ -18,9 +18,9 @@ classifiers = [
 description = "CLI tool to assert that files contain no inline lint-disable directives"
 license = "Apache-2.0"
 name = "assert-no-inline-lint-disables"
+dynamic = ["version"]
 readme = "README.md"
 requires-python = ">=3.10"
-version = "1.1.1"
 
 [project.scripts]
 assert-no-inline-lint-disables = "assert_no_inline_lint_disables.cli:main"
@@ -29,3 +29,5 @@ assert-no-inline-lint-disables = "assert_no_inline_lint_disables.cli:main"
 Homepage = "https://github.com/10U-Labs-LLC/assert-no-inline-lint-disables"
 Issues = "https://github.com/10U-Labs-LLC/assert-no-inline-lint-disables/issues"
 Repository = "https://github.com/10U-Labs-LLC/assert-no-inline-lint-disables"
+
+[tool.setuptools_scm]
