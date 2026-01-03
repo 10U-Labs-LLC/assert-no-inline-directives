@@ -122,13 +122,13 @@ jobs:
           jscpd --pattern "**/*.py" --threshold 0 --reporters console test/
       - name: Install pytest-cov
         run: pip install pytest-cov
-      - name: Run unit tests (100% coverage)
+      - name: Run unit tests
         run: |
           python3 -m pytest test/unit/ \
             --verbose --pythonwarnings=error \
             --cov=assert_no_inline_lint_disables \
             --cov-fail-under=100
-      - name: Run integration tests (100% coverage)
+      - name: Run integration tests
         run: |
           python3 -m pytest test/integration/ \
             --verbose --pythonwarnings=error \
