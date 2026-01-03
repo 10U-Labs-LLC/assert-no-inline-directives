@@ -106,6 +106,9 @@ config.yaml:5:yamllint:yamllint disable
 - Tolerates extra whitespace (e.g., `pylint:  disable`, `type:   ignore`)
 - Finds matches anywhere in the line
 - Does **not** flag "enable" directives (e.g., `yamllint enable`)
+- Linters only check files with matching extensions:
+  - `yamllint`: `.yaml`, `.yml`
+  - `pylint`, `mypy`: `.py`
 
 ## License
 
