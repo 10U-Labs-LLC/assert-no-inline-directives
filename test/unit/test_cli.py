@@ -5,9 +5,11 @@ following TDD principles where tests can be written before implementation.
 """
 
 import sys
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -28,6 +30,24 @@ def run_main_with_args(args: list[str]) -> int:
 def create_mock_finding(path: str, line: int, linter: str, directive: str) -> Finding:
     """Create a Finding object for testing."""
     return Finding(path=path, line_number=line, linter=linter, directive=directive)
+
+
+def create_two_findings(path: str, linter: str = "pylint") -> list[Finding]:
+    """Create two findings for testing multi-finding scenarios."""
+    return [
+        Finding(path=path, line_number=1, linter=linter, directive=f"{linter}: disable"),
+        Finding(path=path, line_number=2, linter=linter, directive=f"{linter}: disable"),
+    ]
+
+
+@contextmanager
+def mock_scan_file(
+    return_value: list[Finding] | None = None,
+) -> Generator[MagicMock, None, None]:
+    """Context manager to mock scan_file with a return value."""
+    with patch("assert_no_inline_lint_disables.cli.scan_file") as mock:
+        mock.return_value = return_value if return_value is not None else []
+        yield mock
 
 
 @pytest.mark.unit
@@ -55,19 +75,17 @@ class TestMainWithMockedScanner:
         """Clean file (no findings) exits 0."""
         test_file = tmp_path / "clean.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]) as mock:
             exit_code = run_main_with_args(["--linters", "pylint", str(test_file)])
         assert exit_code == 0
-        mock_scan.assert_called_once()
+        mock.assert_called_once()
 
     def test_file_with_finding_exits_1(self, tmp_path: Path) -> None:
         """File with finding exits 1."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
         finding = create_mock_finding(str(test_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
+        with mock_scan_file([finding]):
             exit_code = run_main_with_args(["--linters", "pylint", str(test_file)])
         assert exit_code == 1
 
@@ -106,8 +124,7 @@ class TestOutputFormats:
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
         finding = create_mock_finding(str(test_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
+        with mock_scan_file([finding]):
             run_main_with_args(["--linters", "pylint", "--quiet", str(test_file)])
         captured = capsys.readouterr()
         assert captured.out == ""
@@ -116,12 +133,7 @@ class TestOutputFormats:
         """Count flag outputs count."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        findings = [
-            create_mock_finding(str(test_file), 1, "pylint", "pylint: disable"),
-            create_mock_finding(str(test_file), 2, "pylint", "pylint: disable"),
-        ]
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = findings
+        with mock_scan_file(create_two_findings(str(test_file))):
             run_main_with_args(["--linters", "pylint", "--count", str(test_file)])
         captured = capsys.readouterr()
         assert "2" in captured.out
@@ -135,15 +147,8 @@ class TestFlags:
         """Fail-fast exits on first finding."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        findings = [
-            create_mock_finding(str(test_file), 1, "pylint", "pylint: disable"),
-            create_mock_finding(str(test_file), 2, "pylint", "pylint: disable"),
-        ]
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = findings
-            run_main_with_args(
-                ["--linters", "pylint", "--fail-fast", str(test_file)]
-            )
+        with mock_scan_file(create_two_findings(str(test_file))):
+            run_main_with_args(["--linters", "pylint", "--fail-fast", str(test_file)])
         captured = capsys.readouterr()
         lines = [line for line in captured.out.strip().split("\n") if line]
         assert len(lines) == 1
@@ -153,8 +158,7 @@ class TestFlags:
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
         finding = create_mock_finding(str(test_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
+        with mock_scan_file([finding]):
             exit_code = run_main_with_args(
                 ["--linters", "pylint", "--warn-only", str(test_file)]
             )
@@ -164,15 +168,14 @@ class TestFlags:
         """Allow flag is passed to scan_file."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]) as mock:
             run_main_with_args([
                 "--linters", "pylint",
                 "--allow", "too-many-args",
                 str(test_file),
             ])
         # Verify allow patterns were passed
-        call_args = mock_scan.call_args
+        call_args = mock.call_args
         assert call_args is not None
         assert "too-many-args" in call_args[0][3]  # allow_patterns is 4th arg
 
@@ -180,14 +183,14 @@ class TestFlags:
         """Exclude flag skips matching files."""
         test_file = tmp_path / "test_generated.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
+        with mock_scan_file([]) as mock:
             exit_code = run_main_with_args([
                 "--linters", "pylint",
                 "--exclude", "*_generated.py",
                 str(test_file),
             ])
         assert exit_code == 0
-        mock_scan.assert_not_called()  # File was excluded, never scanned
+        mock.assert_not_called()  # File was excluded, never scanned
 
 
 @pytest.mark.unit
@@ -201,31 +204,29 @@ class TestDirectoryAndExtensionHandling:
         py_file = subdir / "test.py"
         py_file.write_text("x = 1\n")
         finding = create_mock_finding(str(py_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
+        with mock_scan_file([finding]) as mock:
             exit_code = run_main_with_args(["--linters", "pylint", str(subdir)])
         assert exit_code == 1
-        mock_scan.assert_called_once()
+        mock.assert_called_once()
 
     def test_skips_irrelevant_extensions(self, tmp_path: Path) -> None:
         """Irrelevant extensions are skipped."""
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("content\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
+        with mock_scan_file([]) as mock:
             exit_code = run_main_with_args(["--linters", "pylint", str(txt_file)])
         assert exit_code == 0
-        mock_scan.assert_not_called()  # .txt not scanned for pylint
+        mock.assert_not_called()  # .txt not scanned for pylint
 
     def test_scans_relevant_extensions(self, tmp_path: Path) -> None:
         """Relevant extensions are scanned."""
         py_file = tmp_path / "test.py"
         py_file.write_text("x = 1\n")
         finding = create_mock_finding(str(py_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
+        with mock_scan_file([finding]) as mock:
             exit_code = run_main_with_args(["--linters", "pylint", str(py_file)])
         assert exit_code == 1
-        mock_scan.assert_called_once()
+        mock.assert_called_once()
 
 
 @pytest.mark.unit
@@ -236,8 +237,7 @@ class TestVerboseFlag:
         """Verbose shows linters being checked."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]):
             run_main_with_args(
                 ["--linters", "pylint,mypy", "--verbose", str(test_file)]
             )
@@ -248,8 +248,7 @@ class TestVerboseFlag:
         """Verbose shows files being scanned."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]):
             run_main_with_args(["--linters", "pylint", "--verbose", str(test_file)])
         captured = capsys.readouterr()
         assert f"Scanning: {test_file}" in captured.out
@@ -260,8 +259,7 @@ class TestVerboseFlag:
         """Verbose does not show skipped directories (scans recursively instead)."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]):
             run_main_with_args(["--linters", "pylint", "--verbose", str(subdir)])
         captured = capsys.readouterr()
         assert "Skipping" not in captured.out
@@ -272,8 +270,7 @@ class TestVerboseFlag:
         """Verbose silently skips irrelevant extensions."""
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("content\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]):
             run_main_with_args(["--linters", "pylint", "--verbose", str(txt_file)])
         captured = capsys.readouterr()
         assert "Skipping" not in captured.out
@@ -284,8 +281,7 @@ class TestVerboseFlag:
         """Verbose silently skips excluded files."""
         test_file = tmp_path / "generated.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]):
             run_main_with_args([
                 "--linters", "pylint",
                 "--verbose",
@@ -295,34 +291,24 @@ class TestVerboseFlag:
         captured = capsys.readouterr()
         assert "Skipping" not in captured.out
 
-    def test_verbose_shows_findings(self, tmp_path: Path, capsys: Any) -> None:
-        """Verbose shows findings inline."""
+    def test_verbose_shows_findings_and_summary(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Verbose shows findings inline and summary at end."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
         finding = create_mock_finding(str(test_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
+        with mock_scan_file([finding]):
             run_main_with_args(["--linters", "pylint", "--verbose", str(test_file)])
         captured = capsys.readouterr()
         assert "pylint: disable" in captured.out
-
-    def test_verbose_shows_summary(self, tmp_path: Path, capsys: Any) -> None:
-        """Verbose shows summary at end."""
-        test_file = tmp_path / "test.py"
-        test_file.write_text("x = 1\n")
-        finding = create_mock_finding(str(test_file), 1, "pylint", "pylint: disable")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = [finding]
-            run_main_with_args(["--linters", "pylint", "--verbose", str(test_file)])
-        captured = capsys.readouterr()
         assert "Scanned 1 file(s), found 1 finding(s)" in captured.out
 
     def test_verbose_short_flag(self, tmp_path: Path, capsys: Any) -> None:
         """Short -v flag works."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = []
+        with mock_scan_file([]):
             run_main_with_args(["--linters", "pylint", "-v", str(test_file)])
         captured = capsys.readouterr()
         assert "Checking for: pylint" in captured.out
@@ -349,12 +335,7 @@ class TestVerboseFlag:
         """Verbose with fail-fast shows finding and summary."""
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
-        findings = [
-            create_mock_finding(str(test_file), 1, "pylint", "pylint: disable"),
-            create_mock_finding(str(test_file), 2, "pylint", "pylint: disable"),
-        ]
-        with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-            mock_scan.return_value = findings
+        with mock_scan_file(create_two_findings(str(test_file))):
             run_main_with_args([
                 "--linters", "pylint", "--verbose", "--fail-fast", str(test_file)
             ])
@@ -395,8 +376,7 @@ class TestErrorHandling:
         readable.write_text("x = 1\n")
         finding = create_mock_finding(str(readable), 1, "pylint", "pylint: disable")
         try:
-            with patch("assert_no_inline_lint_disables.cli.scan_file") as mock_scan:
-                mock_scan.return_value = [finding]
+            with mock_scan_file([finding]):
                 exit_code = run_main_with_args([
                     "--linters", "pylint", str(unreadable), str(readable)
                 ])
@@ -407,3 +387,67 @@ class TestErrorHandling:
             assert "pylint: disable" in captured.out
         finally:
             unreadable.chmod(0o644)
+
+
+@pytest.mark.unit
+class TestGlobPatterns:
+    """Tests for glob pattern expansion."""
+
+    def test_glob_pattern_matches_files(self, tmp_path: Path) -> None:
+        """Glob pattern matching files expands correctly."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text("x = 1\n")
+        pattern = str(tmp_path / "*.py")
+        with mock_scan_file([]):
+            exit_code = run_main_with_args(["--linters", "pylint", pattern])
+        assert exit_code == 0
+
+    def test_glob_pattern_matches_directory(self, tmp_path: Path) -> None:
+        """Glob pattern matching directory expands to files inside."""
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        py_file = subdir / "test.py"
+        py_file.write_text("x = 1\n")
+        # Pattern matches the directory, which should be expanded
+        pattern = str(tmp_path / "sub*")
+        finding = create_mock_finding(str(py_file), 1, "pylint", "pylint: disable")
+        with mock_scan_file([finding]):
+            exit_code = run_main_with_args(["--linters", "pylint", pattern])
+        assert exit_code == 1
+
+    def test_glob_pattern_no_match_exits_2(self, tmp_path: Path, capsys: Any) -> None:
+        """Glob pattern that matches nothing exits 2."""
+        pattern = str(tmp_path / "nonexistent*.py")
+        exit_code = run_main_with_args(["--linters", "pylint", pattern])
+        assert exit_code == 2
+        captured = capsys.readouterr()
+        assert "No such file or directory" in captured.err
+
+    def test_recursive_glob_pattern(self, tmp_path: Path) -> None:
+        """Recursive glob pattern (**) works correctly."""
+        subdir = tmp_path / "deep" / "nested"
+        subdir.mkdir(parents=True)
+        py_file = subdir / "test.py"
+        py_file.write_text("x = 1\n")
+        pattern = str(tmp_path / "**" / "*.py")
+        with mock_scan_file([]):
+            exit_code = run_main_with_args(["--linters", "pylint", pattern])
+        assert exit_code == 0
+
+    def test_question_mark_glob_pattern(self, tmp_path: Path) -> None:
+        """Question mark glob pattern works."""
+        py_file = tmp_path / "a.py"
+        py_file.write_text("x = 1\n")
+        pattern = str(tmp_path / "?.py")
+        with mock_scan_file([]):
+            exit_code = run_main_with_args(["--linters", "pylint", pattern])
+        assert exit_code == 0
+
+    def test_bracket_glob_pattern(self, tmp_path: Path) -> None:
+        """Bracket glob pattern works."""
+        py_file = tmp_path / "a.py"
+        py_file.write_text("x = 1\n")
+        pattern = str(tmp_path / "[abc].py")
+        with mock_scan_file([]):
+            exit_code = run_main_with_args(["--linters", "pylint", pattern])
+        assert exit_code == 0
