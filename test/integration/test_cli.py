@@ -421,8 +421,8 @@ class TestCliVerbose:
     """Tests for --verbose flag integration scenarios."""
 
     def test_verbose_full_workflow(self, tmp_path: Path, capsys: Any) -> None:
-        """Verbose shows complete workflow: linters, skips, scans, findings, summary."""
-        # Create various files to test all verbose output types
+        """Verbose shows complete workflow: linters, scans, findings, summary."""
+        # Create various files to test verbose output
         py_file = tmp_path / "code.py"
         py_file.write_text("x = 1  # type: ignore\n")
         txt_file = tmp_path / "notes.txt"
@@ -440,9 +440,8 @@ class TestCliVerbose:
         out = capsys.readouterr().out
         assert "Checking for:" in out
         assert "Scanning:" in out
-        assert "Skipping (extension):" in out
-        assert "Skipping (directory):" in out
-        assert "Skipping (excluded):" in out
+        # Skipping messages are not shown (files are silently skipped)
+        assert "Skipping" not in out
         assert "type: ignore" in out
         assert "Scanned 1 file(s), found 1 finding(s)" in out
 
@@ -467,18 +466,17 @@ class TestCliVerbose:
 class TestCliDirectoryHandling:
     """Tests for directory handling."""
 
-    def test_skips_directories(self, tmp_path: Path) -> None:
-        """Directories are silently skipped."""
+    def test_scans_directories_recursively(self, tmp_path: Path) -> None:
+        """Directories are scanned recursively."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
-        test_file = tmp_path / "test.py"
-        test_file.write_text("x = 1\n")
+        nested_file = subdir / "test.py"
+        nested_file.write_text("x = 1  # type: ignore\n")
         exit_code = run_main_with_args([
             "--linters", "mypy",
             str(subdir),
-            str(test_file),
         ])
-        assert exit_code == 0
+        assert exit_code == 1  # Finding detected in nested file
 
     def test_directories_do_not_cause_errors(
         self,
@@ -498,3 +496,27 @@ class TestCliDirectoryHandling:
         captured = capsys.readouterr()
         assert "Error" not in captured.err
         assert "Is a directory" not in captured.err
+
+    def test_unreadable_file_in_directory(
+        self,
+        tmp_path: Path,
+        capsys: Any,
+    ) -> None:
+        """Unreadable file in directory causes error but continues."""
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        unreadable = subdir / "unreadable.py"
+        unreadable.write_text("content\n")
+        unreadable.chmod(0o000)
+        readable = subdir / "readable.py"
+        readable.write_text("x = 1  # type: ignore\n")
+        try:
+            exit_code = run_main_with_args([
+                "--linters", "mypy", str(subdir)
+            ])
+            assert exit_code == 1  # Finding in readable file
+            captured = capsys.readouterr()
+            assert "Error reading" in captured.err
+            assert "type: ignore" in captured.out
+        finally:
+            unreadable.chmod(0o644)

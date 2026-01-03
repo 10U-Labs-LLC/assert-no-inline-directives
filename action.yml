@@ -39,6 +39,7 @@ runs:
     - run: python3 -m pip install assert-no-inline-lint-disables
       shell: bash
     - run: |
+        shopt -s globstar
         ARGS="--linters ${{ inputs.linters }}"
         [ "${{ inputs.quiet }}" = "true" ] && ARGS="$ARGS --quiet"
         [ "${{ inputs.count }}" = "true" ] && ARGS="$ARGS --count"

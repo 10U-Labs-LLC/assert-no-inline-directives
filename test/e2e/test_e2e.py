@@ -357,13 +357,14 @@ class TestVerboseFlag:
         assert result.returncode == 0
         assert "Scanning:" in result.stdout
 
-    def test_verbose_shows_skipping(self, tmp_path: Path) -> None:
-        """Verbose shows files being skipped."""
+    def test_verbose_silently_skips_irrelevant_files(self, tmp_path: Path) -> None:
+        """Verbose silently skips files with irrelevant extensions."""
         txt_file = tmp_path / "test.txt"
         txt_file.write_text("x = 1\n")
         result = run_cli("--linters", "pylint", "--verbose", str(txt_file))
         assert result.returncode == 0
-        assert "Skipping (extension):" in result.stdout
+        assert "Skipping" not in result.stdout
+        assert "Scanned 0 file(s)" in result.stdout
 
     def test_verbose_shows_findings(self, tmp_path: Path) -> None:
         """Verbose shows findings inline."""
@@ -566,26 +567,38 @@ class TestMultipleFindings:
 class TestDirectoryHandling:
     """E2E tests for directory handling."""
 
-    def test_skips_directories_silently(self, tmp_path: Path) -> None:
-        """Directories passed as arguments are silently skipped."""
+    def test_scans_directories_recursively(self, tmp_path: Path) -> None:
+        """Directories passed as arguments are scanned recursively."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
-        test_file = tmp_path / "test.py"
-        test_file.write_text("x = 1\n")
-        result = run_cli(
-            "--linters", "mypy",
-            str(subdir),
-            str(test_file),
-        )
-        assert result.returncode == 0
-        assert "Error" not in result.stderr
+        nested_file = subdir / "test.py"
+        nested_file.write_text("x = 1  # type: ignore\n")
+        result = run_cli("--linters", "mypy", str(subdir))
+        assert result.returncode == 1  # Finding detected in nested file
 
-    def test_only_directory_exits_0(self, tmp_path: Path) -> None:
-        """Passing only a directory exits 0 (nothing to scan)."""
+    def test_empty_directory_exits_0(self, tmp_path: Path) -> None:
+        """Passing an empty directory exits 0 (nothing to scan)."""
         subdir = tmp_path / "subdir"
         subdir.mkdir()
         result = run_cli("--linters", "mypy", str(subdir))
         assert result.returncode == 0
+
+    def test_unreadable_file_in_directory_exits_1(self, tmp_path: Path) -> None:
+        """Unreadable file in directory causes error but continues scanning."""
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        unreadable = subdir / "unreadable.py"
+        unreadable.write_text("clean\n")
+        unreadable.chmod(0o000)
+        readable = subdir / "readable.py"
+        readable.write_text("# pylint: disable=foo\n")
+        try:
+            result = run_cli("--linters", "pylint", str(subdir))
+            assert result.returncode == 1
+            assert "Error reading" in result.stderr
+            assert "pylint: disable" in result.stdout
+        finally:
+            unreadable.chmod(0o644)
 
 
 @pytest.mark.e2e
