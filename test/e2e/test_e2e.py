@@ -781,3 +781,93 @@ def test_detects_type_ignore():
 ''')
         result = run_cli("--linters", "pylint,mypy", str(test_file))
         assert result.returncode == 0
+
+
+@pytest.mark.e2e
+class TestAlphabeticalSorting:
+    """Tests for alphabetical file ordering."""
+
+    def test_files_scanned_alphabetically(self, tmp_path: Path) -> None:
+        """Files are scanned in alphabetical order."""
+        # Create files in non-alphabetical order
+        (tmp_path / "z_file.py").write_text("# pylint: disable=a\n")
+        (tmp_path / "a_file.py").write_text("# pylint: disable=b\n")
+        (tmp_path / "m_file.py").write_text("# pylint: disable=c\n")
+        result = run_cli("--linters", "pylint", "--verbose", str(tmp_path))
+        lines = result.stdout.splitlines()
+        scan_lines = [l for l in lines if l.startswith("Scanning:")]
+        assert "a_file.py" in scan_lines[0]
+        assert "m_file.py" in scan_lines[1]
+        assert "z_file.py" in scan_lines[2]
+
+    def test_findings_output_alphabetically(self, tmp_path: Path) -> None:
+        """Findings are output in alphabetical file order."""
+        (tmp_path / "z.py").write_text("# pylint: disable=a\n")
+        (tmp_path / "a.py").write_text("# pylint: disable=b\n")
+        result = run_cli("--linters", "pylint", str(tmp_path))
+        lines = [l for l in result.stdout.splitlines() if l.strip()]
+        assert "a.py" in lines[0]
+        assert "z.py" in lines[1]
+
+
+@pytest.mark.e2e
+class TestGlobPatterns:
+    """Tests for glob pattern support."""
+
+    def test_glob_pattern_matches_files(self, tmp_path: Path) -> None:
+        """Glob patterns match files."""
+        subdir = tmp_path / "src"
+        subdir.mkdir()
+        (subdir / "test.py").write_text("# pylint: disable=foo\n")
+        result = run_cli("--linters", "pylint", str(tmp_path / "**" / "*.py"))
+        assert result.returncode == 1
+
+    def test_glob_pattern_no_match_exits_2(self, tmp_path: Path) -> None:
+        """Glob pattern with no matches exits 2."""
+        result = run_cli("--linters", "pylint", str(tmp_path / "**" / "*.xyz"))
+        assert result.returncode == 2
+
+    def test_hidden_directory_matched(self, tmp_path: Path) -> None:
+        """Hidden directories are matched by glob."""
+        hidden = tmp_path / ".hidden"
+        hidden.mkdir()
+        (hidden / "config.yml").write_text("# yamllint disable\n")
+        result = run_cli("--linters", "yamllint", str(tmp_path / "**" / "*.yml"))
+        assert result.returncode == 1
+        assert ".hidden" in result.stdout
+
+
+@pytest.mark.e2e
+class TestTomlSupport:
+    """Tests for .toml file support."""
+
+    def test_toml_scanned_for_pylint(self, tmp_path: Path) -> None:
+        """TOML files are scanned for pylint directives."""
+        toml_file = tmp_path / "pyproject.toml"
+        toml_file.write_text("[tool.black]\nline-length = 88  # pylint: disable=foo\n")
+        result = run_cli("--linters", "pylint", str(toml_file))
+        assert result.returncode == 1
+        assert "pylint: disable" in result.stdout
+
+    def test_toml_scanned_for_mypy(self, tmp_path: Path) -> None:
+        """TOML files are scanned for mypy directives."""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text("value = 1  # type: ignore\n")
+        result = run_cli("--linters", "mypy", str(toml_file))
+        assert result.returncode == 1
+        assert "type: ignore" in result.stdout
+
+    def test_toml_scanned_for_yamllint(self, tmp_path: Path) -> None:
+        """TOML files are scanned for yamllint directives."""
+        toml_file = tmp_path / "settings.toml"
+        toml_file.write_text("key = 'value'  # yamllint disable\n")
+        result = run_cli("--linters", "yamllint", str(toml_file))
+        assert result.returncode == 1
+        assert "yamllint disable" in result.stdout
+
+    def test_clean_toml_exits_0(self, tmp_path: Path) -> None:
+        """Clean TOML file exits 0."""
+        toml_file = tmp_path / "clean.toml"
+        toml_file.write_text("[section]\nkey = 'value'\n")
+        result = run_cli("--linters", "pylint,mypy,yamllint", str(toml_file))
+        assert result.returncode == 0
