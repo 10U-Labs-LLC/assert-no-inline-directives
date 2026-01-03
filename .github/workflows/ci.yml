@@ -94,8 +94,8 @@ jobs:
           echo "markdownlint did not find any issues."
       - name: Install package
         run: pip install -e .
-      - name: Install pylint
-        run: pip install pylint
+      - name: Install pylint and pytest
+        run: pip install pylint pytest
       - name: Run pylint on source
         run: |
           python3 -m pylint src/ \
@@ -120,8 +120,8 @@ jobs:
       - name: Check for duplicate code in tests
         run: |
           jscpd --pattern "**/*.py" --threshold 0 --reporters console test/
-      - name: Install pytest and pytest-cov
-        run: pip install pytest pytest-cov
+      - name: Install pytest-cov
+        run: pip install pytest-cov
       - name: Run unit tests (100% coverage)
         run: |
           python3 -m pytest test/unit/ \
