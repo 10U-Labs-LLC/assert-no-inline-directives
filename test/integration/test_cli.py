@@ -1,6 +1,5 @@
 """Integration tests for the CLI module."""
 
-import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -259,31 +258,6 @@ class TestCliCount:
         run_main_with_args(["--linters", "mypy", "--count", str(test_file)])
         captured = capsys.readouterr()
         assert captured.out.strip() == "0"
-
-
-@pytest.mark.integration
-class TestCliJson:
-    """Tests for --json flag."""
-
-    def test_json_output(self, tmp_path: Path, capsys: Any) -> None:
-        """JSON mode outputs valid JSON."""
-        test_file = tmp_path / "test.py"
-        test_file.write_text("x = 1  # type: ignore\n")
-        run_main_with_args(["--linters", "mypy", "--json", str(test_file)])
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert len(data) == 1
-        assert data[0]["linter"] == "mypy"
-        assert data[0]["line"] == 1
-
-    def test_json_empty_array(self, tmp_path: Path, capsys: Any) -> None:
-        """JSON mode outputs empty array for clean files."""
-        test_file = tmp_path / "clean.py"
-        test_file.write_text("x = 1\n")
-        run_main_with_args(["--linters", "mypy", "--json", str(test_file)])
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data == []
 
 
 @pytest.mark.integration

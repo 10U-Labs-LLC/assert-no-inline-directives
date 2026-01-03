@@ -1,6 +1,5 @@
 """End-to-end tests for the CLI tool."""
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -308,40 +307,6 @@ class TestCountFlag:
         result = run_cli("--linters", "mypy", "--count", str(test_file))
         assert result.returncode == 0
         assert result.stdout.strip() == "0"
-
-
-@pytest.mark.e2e
-class TestJsonFlag:
-    """E2E tests for --json flag."""
-
-    def test_json_output(self, tmp_path: Path) -> None:
-        """JSON mode outputs valid JSON."""
-        test_file = tmp_path / "test.py"
-        test_file.write_text("x = foo()  # type: ignore\n")
-        result = run_cli("--linters", "mypy", "--json", str(test_file))
-        assert result.returncode == 1
-        data = json.loads(result.stdout)
-        assert len(data) == 1
-        assert data[0]["linter"] == "mypy"
-        assert data[0]["line"] == 1
-        assert data[0]["directive"] == "type: ignore"
-
-    def test_json_empty_array(self, tmp_path: Path) -> None:
-        """JSON mode outputs empty array for clean files."""
-        test_file = tmp_path / "clean.py"
-        test_file.write_text("x = 1\n")
-        result = run_cli("--linters", "mypy", "--json", str(test_file))
-        assert result.returncode == 0
-        data = json.loads(result.stdout)
-        assert data == []
-
-    def test_json_multiple_findings(self, tmp_path: Path) -> None:
-        """JSON mode outputs all findings."""
-        test_file = tmp_path / "test.py"
-        test_file.write_text("# pylint: disable=foo\nx = 1  # type: ignore\n")
-        result = run_cli("--linters", "pylint,mypy", "--json", str(test_file))
-        data = json.loads(result.stdout)
-        assert len(data) == 2
 
 
 @pytest.mark.e2e

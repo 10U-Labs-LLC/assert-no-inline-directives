@@ -2,7 +2,6 @@
 
 import argparse
 import fnmatch
-import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -56,9 +55,10 @@ def create_parser() -> argparse.ArgumentParser:
         help="Print finding count only.",
     )
     output_group.add_argument(
-        "--json",
+        "-v",
+        "--verbose",
         action="store_true",
-        help="Output findings as JSON.",
+        help="Show linters, files scanned/skipped, findings, and summary.",
     )
 
     # Behavior modifiers (mutually exclusive)
@@ -80,13 +80,6 @@ def create_parser() -> argparse.ArgumentParser:
         help="Comma-separated patterns to allow.",
     )
 
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show files being scanned and skipped.",
-    )
-
     return parser
 
 
@@ -97,15 +90,9 @@ def parse_patterns(patterns_str: str | None) -> list[str]:
     return [p.strip() for p in patterns_str.split(",") if p.strip()]
 
 
-def output_findings(
-    findings: list[Finding],
-    use_json: bool,
-    use_count: bool,
-) -> None:
+def _output_findings(findings: list[Finding], use_count: bool) -> None:
     """Output findings in the appropriate format."""
-    if use_json:
-        print(json.dumps([f.to_dict() for f in findings]))
-    elif use_count:
+    if use_count:
         print(len(findings))
     else:
         for finding in findings:
@@ -168,11 +155,11 @@ def _process_files(
         skip_reason = _check_skip_reason(path, relevant_extensions, exclude_patterns)
         if skip_reason:
             if args.verbose:
-                print(f"Skipping ({skip_reason}): {path}", file=sys.stderr)
+                print(f"Skipping ({skip_reason}): {path}")
             continue
 
         if args.verbose:
-            print(f"Scanning: {path}", file=sys.stderr)
+            print(f"Scanning: {path}")
         result.files_scanned += 1
 
         findings = _scan_single_file(path, linters, allow_patterns, result)
@@ -180,14 +167,16 @@ def _process_files(
             continue
 
         if findings and args.fail_fast:
-            if not args.quiet:
-                output_findings([findings[0]], args.json, args.count)
             if args.verbose:
-                print(
-                    f"Scanned {result.files_scanned} file(s), found 1 finding",
-                    file=sys.stderr,
-                )
+                print(findings[0])
+                print(f"Scanned {result.files_scanned} file(s), found 1 finding")
+            elif not args.quiet:
+                _output_findings([findings[0]], args.count)
             sys.exit(EXIT_FINDINGS)
+
+        if args.verbose:
+            for finding in findings:
+                print(finding)
 
         result.findings.extend(findings)
 
@@ -206,21 +195,17 @@ def main() -> None:
         sys.exit(EXIT_ERROR)
 
     if args.verbose:
-        print(f"Checking for: {', '.join(sorted(linters))}", file=sys.stderr)
+        print(f"Checking for: {', '.join(sorted(linters))}")
 
     exclude_patterns = parse_patterns(args.exclude)
     allow_patterns = parse_patterns(args.allow) or None
 
     result = _process_files(args, linters, exclude_patterns, allow_patterns)
 
-    if not args.quiet:
-        output_findings(result.findings, args.json, args.count)
-
     if args.verbose:
-        print(
-            f"Scanned {result.files_scanned} file(s), found {len(result.findings)} finding(s)",
-            file=sys.stderr,
-        )
+        print(f"Scanned {result.files_scanned} file(s), found {len(result.findings)} finding(s)")
+    elif not args.quiet:
+        _output_findings(result.findings, args.count)
 
     if args.warn_only:
         sys.exit(EXIT_SUCCESS)

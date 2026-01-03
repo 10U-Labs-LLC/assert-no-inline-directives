@@ -1,0 +1,51 @@
+---
+concurrency:
+  cancel-in-progress: true
+  group: version-bump-${{ github.ref }}
+jobs:
+  bump:
+    if: |
+      github.event_name == 'push' &&
+      !contains(github.event.head_commit.message, '[skip version]') &&
+      !contains(github.event.head_commit.message, 'Bump version to')
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - id: bump
+        name: Bump patch version
+        run: |
+          CMD="import tomllib, re"
+          CMD="$CMD; f = open('pyproject.toml', 'rb')"
+          CMD="$CMD; version = tomllib.load(f)['project']['version']"
+          CMD="$CMD; parts = version.split('.')"
+          CMD="$CMD; parts[2] = str(int(parts[2]) + 1)"
+          CMD="$CMD; new_version = '.'.join(parts)"
+          CMD="$CMD; print(f'new_version={new_version}')"
+          python -c "$CMD" >> $GITHUB_OUTPUT
+      - name: Update pyproject.toml
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "Bump version to ${{ steps.bump.outputs.new_version }}"
+          git push
+name: Version Bump
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "*.md"
