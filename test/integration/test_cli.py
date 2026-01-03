@@ -637,6 +637,20 @@ class TestCliGlobPatterns:
         assert "beta.py" in output
         assert "gamma.py" not in output  # No finding in clean file
 
+    def test_glob_matching_directory_expands_contents(
+        self, tmp_path: Path, capsys: Any
+    ) -> None:
+        """Glob matching a directory name expands to scan files inside."""
+        subdir = tmp_path / "src"
+        subdir.mkdir()
+        (subdir / "module.py").write_text("# pylint: disable=all\n")
+        # Glob matches directory name, should expand and scan contents
+        exit_code = run_main_with_args([
+            "--linters", "pylint", str(tmp_path / "s*")
+        ])
+        assert exit_code == 1
+        assert "module.py" in capsys.readouterr().out
+
     def test_recursive_glob_finds_deeply_nested_files(
         self, tmp_path: Path, capsys: Any
     ) -> None:
