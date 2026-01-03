@@ -80,16 +80,36 @@ jobs:
         name: E2E tests
         run: python3 -m pytest test/e2e/ --verbose --pythonwarnings=error
       - env:
-          S: "${{ steps.yamllint.outcome }},${{ steps.markdownlint.outcome }},\
-            ${{ steps.pylint_src.outcome }},${{ steps.pylint_test.outcome }},\
-            ${{ steps.mypy_src.outcome }},${{ steps.mypy_test.outcome }},\
-            ${{ steps.jscpd_src.outcome }},${{ steps.jscpd_test.outcome }},\
-            ${{ steps.unit_tests.outcome }},\
-            ${{ steps.integration_tests.outcome }},\
-            ${{ steps.e2e_tests.outcome }}"
+          E2E_TESTS: ${{ steps.e2e_tests.outcome }}
+          INTEGRATION_TESTS: ${{ steps.integration_tests.outcome }}
+          JSCPD_SRC: ${{ steps.jscpd_src.outcome }}
+          JSCPD_TEST: ${{ steps.jscpd_test.outcome }}
+          MARKDOWNLINT: ${{ steps.markdownlint.outcome }}
+          MYPY_SRC: ${{ steps.mypy_src.outcome }}
+          MYPY_TEST: ${{ steps.mypy_test.outcome }}
+          PYLINT_SRC: ${{ steps.pylint_src.outcome }}
+          PYLINT_TEST: ${{ steps.pylint_test.outcome }}
+          UNIT_TESTS: ${{ steps.unit_tests.outcome }}
+          YAMLLINT: ${{ steps.yamllint.outcome }}
         name: Assert no step failed
         run: |
-          echo "$S" | grep -q failure && echo "Step(s) failed" && exit 1
+          failed=""
+          [ "$YAMLLINT" = "failure" ] && failed="$failed yamllint"
+          [ "$MARKDOWNLINT" = "failure" ] && failed="$failed markdownlint"
+          [ "$PYLINT_SRC" = "failure" ] && failed="$failed pylint_src"
+          [ "$PYLINT_TEST" = "failure" ] && failed="$failed pylint_test"
+          [ "$MYPY_SRC" = "failure" ] && failed="$failed mypy_src"
+          [ "$MYPY_TEST" = "failure" ] && failed="$failed mypy_test"
+          [ "$JSCPD_SRC" = "failure" ] && failed="$failed jscpd_src"
+          [ "$JSCPD_TEST" = "failure" ] && failed="$failed jscpd_test"
+          [ "$UNIT_TESTS" = "failure" ] && failed="$failed unit_tests"
+          [ "$INTEGRATION_TESTS" = "failure" ] && \
+            failed="$failed integration_tests"
+          [ "$E2E_TESTS" = "failure" ] && failed="$failed e2e_tests"
+          if [ -n "$failed" ]; then
+            echo "At least one step failed:$failed"
+            exit 1
+          fi
           echo "All steps passed"
 name: CI
 on:
