@@ -107,10 +107,10 @@ jobs:
             failed="$failed integration_tests"
           [ "$E2E_TESTS" = "failure" ] && failed="$failed e2e_tests"
           if [ -n "$failed" ]; then
-            echo "At least one step failed:$failed"
+            echo "Steps that failed:$failed"
             exit 1
           fi
-          echo "All steps passed"
+          echo "All steps succeeded"
 name: CI
 on:
   pull_request:
